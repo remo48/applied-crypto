@@ -1,6 +1,7 @@
 from telnetlib import Telnet
 import json
 from Crypto.Random import get_random_bytes
+from Crypto.Util.Padding import pad
 
 
 def json_recv(tn: Telnet):
@@ -30,24 +31,22 @@ def is_padding_correct(tn: Telnet, ciphertext: bytes):
     return False
 
 
-def get_initial_ciphertext(tn: Telnet):
-    """Gets a ciphertext of a correctly decrypted command including the flag.
+def get_encrypted_flag(tn: Telnet):
+    """Gets a ciphertext from the oracle including the flag.
 
-    Note here that the server responds with a correctly padded and encoded 
-    message and thus reflecting this message gets us the ciphertext with a flag
-
-    Args:
+    Args: 
         tn (Telnet): a telnet client
-
-    Returns:
-        str: ciphertext including flag
     """
-    rand_command = get_random_bytes(32)
-    json_send(tn, {"command": rand_command.hex()})
-    res = json_recv(tn)["res"]
-    json_send(tn, {"command": res})
-    res = json_recv(tn)["res"]
-    return res
+
+    command = pad(b"flag_hey_there_oh_noes_block_boundaries_rip", 16)
+    encrypted_command = bytearray(len(command))
+    ciphertext = get_random_bytes(16)
+    for i in range(len(command), 0, -16):
+        encrypted_command[i-16:i] = ciphertext
+        plaintext = decrypt_block(tn, bytes(16), ciphertext)
+        ciphertext = byte_xor(plaintext, command[i-16:i])
+    json_send(tn, {"command": (ciphertext + encrypted_command).hex()})
+    return json_recv(tn)["res"]
 
 
 def byte_xor(a: bytes, b: bytes):
@@ -88,13 +87,12 @@ def decrypt_block(tn: Telnet, iv: bytes, block: bytes):
 def attack(tn: Telnet):
     """Performs the attack
 
-    The attack works the same way as in exercise m3. But in this exercise the whole 
-    plaintext is decrypted by repeating the attack for every block.
+    The decryption of the ciphertexts is the same as in the previous exercise
 
     Args:
         tn (Telnet): a telnet client
     """
-    ciphertext = bytes.fromhex(get_initial_ciphertext(tn))
+    ciphertext = bytes.fromhex(get_encrypted_flag(tn))
     plaintext = ""
     num_blocks = len(ciphertext)//16 - 1
 
@@ -106,8 +104,14 @@ def attack(tn: Telnet):
 
 
 def main():
-    HOSTNAME = "aclabs.ethz.ch"
-    PORT = 50404
+    remote = True
+
+    if remote:
+        HOSTNAME = "aclabs.ethz.ch"
+        PORT = 50406
+    else:
+        HOSTNAME = "localhost"
+        PORT = 50406
 
     with Telnet(HOSTNAME, PORT) as tn:
         attack(tn)
