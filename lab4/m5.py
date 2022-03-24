@@ -31,23 +31,6 @@ def is_padding_correct(tn: Telnet, ciphertext: bytes):
     return False
 
 
-def get_initial_ciphertext(tn: Telnet):
-    """Gets a ciphertext of a correctly decrypted command including the flag.
-
-    Note here that the server responds with a correctly padded and encoded 
-    message and thus reflecting this message gets us the ciphertext with a flag
-
-    Args:
-        tn (Telnet): a telnet client
-
-    Returns:
-        str: ciphertext including flag
-    """
-    rand_command = get_random_bytes(32)
-    json_send(tn, {"command": rand_command.hex()})
-    return json_recv(tn)["res"]
-
-
 def get_encrypted_flag(tn: Telnet):
     """Gets a ciphertext from the oracle including the flag. 
 
@@ -60,6 +43,9 @@ def get_encrypted_flag(tn: Telnet):
 
     Args: 
         tn (Telnet): a telnet client
+
+    Returns:
+        str: a ciphertext including the flag
     """
     json_send(tn, {"command": get_random_bytes(32).hex()})
     # This is most probably the encryption of "Failed to execute command ..."
@@ -79,17 +65,24 @@ def byte_xor(a: bytes, b: bytes):
     Args:
         a (bytes): the first byte array
         b (bytes): the second byte array
+
+    Returns:
+        bytearray: xor of the two byte arrays a and b
     """
     return bytearray([x ^ y for x, y in zip(a, b)])
 
 
 def decrypt_block(tn: Telnet, iv: bytes, block: bytes):
-    """Decrypts a block of ciphertext given an initialization vector iv
+    """Decrypts a block of ciphertext given an initialization vector iv and the 
+    encrypted block
 
     Args:
         tn (Telnet): a telnet client
         iv (bytes): initialization vector
         block (bytes): the ciphertext block to decrypt
+
+    Returns:
+        bytearray: the decryption of the block
     """
     delta_success = bytearray(16)
     for i in range(1, 17):
@@ -111,7 +104,7 @@ def decrypt_block(tn: Telnet, iv: bytes, block: bytes):
 def attack(tn: Telnet):
     """Performs the attack
 
-    The decryption of the ciphertexts is the same as in the previous exercise
+    First get a ciphertext including the flag and then decrypt it.
 
     Args:
         tn (Telnet): a telnet client

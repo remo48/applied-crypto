@@ -34,10 +34,17 @@ def is_padding_correct(tn: Telnet, ciphertext: bytes):
 def get_encrypted_flag(tn: Telnet):
     """Gets a ciphertext from the oracle including the flag.
 
+    First decrypt a random block with a iv containing only 0x00 bytes. We then compute
+    a value iv', which xor'd with the plaintext results in the last block of the command.
+    By repeating this process with iv' as the ciphertext, we ultimately forge a encryption
+    of the command 
+
     Args: 
         tn (Telnet): a telnet client
-    """
 
+    Returns:
+        str: a ciphertext including the flag
+    """
     command = pad(b"flag_hey_there_oh_noes_block_boundaries_rip", 16)
     encrypted_command = bytearray(len(command))
     ciphertext = get_random_bytes(16)
@@ -45,6 +52,8 @@ def get_encrypted_flag(tn: Telnet):
         encrypted_command[i-16:i] = ciphertext
         plaintext = decrypt_block(tn, bytes(16), ciphertext)
         ciphertext = byte_xor(plaintext, command[i-16:i])
+        print(
+            f"Successfully forged block {(len(command)-i)//16 + 1} of {len(command)//16}")
     json_send(tn, {"command": (ciphertext + encrypted_command).hex()})
     return json_recv(tn)["res"]
 
@@ -55,17 +64,24 @@ def byte_xor(a: bytes, b: bytes):
     Args:
         a (bytes): the first byte array
         b (bytes): the second byte array
+
+    Returns:
+        bytearray: xor of the two byte arrays a and b
     """
     return bytearray([x ^ y for x, y in zip(a, b)])
 
 
 def decrypt_block(tn: Telnet, iv: bytes, block: bytes):
-    """Decrypts a block of ciphertext given an initialization vector iv
+    """Decrypts a block of ciphertext given an initialization vector iv and the 
+    encrypted block
 
     Args:
         tn (Telnet): a telnet client
         iv (bytes): initialization vector
         block (bytes): the ciphertext block to decrypt
+
+    Returns:
+        bytearray: the decryption of the block
     """
     delta_success = bytearray(16)
     for i in range(1, 17):
@@ -87,7 +103,7 @@ def decrypt_block(tn: Telnet, iv: bytes, block: bytes):
 def attack(tn: Telnet):
     """Performs the attack
 
-    The decryption of the ciphertexts is the same as in the previous exercise
+    First get a ciphertext inlcuding the flag and then decrypt it.
 
     Args:
         tn (Telnet): a telnet client
