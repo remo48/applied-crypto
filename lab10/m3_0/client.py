@@ -27,8 +27,8 @@ class CarpetRemote():
 
     def json_signed_send(self, req: dict):
         req_hash = SHA256.new(json.dumps(req).encode())
-        # Your code here.
-        signature = ...
+        signer = DSS.new(self.cloud_key, "fips-186-3")
+        signature = signer.sign(req_hash)
         self.json_send({
             "identity": self.identity,
             "msg": req,
@@ -45,9 +45,9 @@ class CarpetRemote():
             signed = res["signed_error"].encode()
 
         h = SHA256.new(signed)
-        # Your code here.
-        verifier = ...
-        verifier.verify ...
+
+        verifier = DSS.new(self.carpet_key, "fips-186-3")
+        verifier.verify(h, signature)
 
         return signed
 
@@ -59,12 +59,19 @@ class CarpetRemote():
         res = self.json_signed_recv()
         return res
 
+    def get_flag(self):
+        obj = {"command": "backdoor"}
+        self.json_signed_send(obj)
+        res = self.json_signed_recv()
+        return res
+
 def interact(tn: Telnet, carpet_key: EccKey, carpet_cloud_key: Optional[EccKey]):
     """ Get the flag here.
     """
     cr = CarpetRemote(tn, carpet_key, carpet_cloud_key)
 
     print(cr.get_status())
+    print(cr.get_flag())
 
 if __name__ == "__main__":
     from public import carpet_pubkey, cloud_key
