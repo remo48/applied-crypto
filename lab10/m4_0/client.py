@@ -3,8 +3,7 @@ from telnetlib import Telnet
 
 from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
-from Crypto.Signature import PKCS1_v1_5
-from Crypto.Util.number import bytes_to_long, long_to_bytes, ceil_div
+from Crypto.Util.number import ceil_div
 
 # IMPORTANT: Change this to False if you want to run the client against your local implementation
 REMOTE = True
@@ -53,13 +52,13 @@ def sign(K: RSA.RsaKey, M: bytes) -> bytes:
     k = ceil_div(K.size_in_bits(), 8)
     em = encode(M, k)
     # 1. OS2IP
-    m = bytes_to_long(em)
+    m = int.from_bytes(em, "big")
     # 2. RSASP1
     if not 0 < m < K.n-1:
         raise AttributeError("message representative out of range")
     s = pow(m, K.d, K.n)
     # 3. I2OSP
-    signature = long_to_bytes(s, k)
+    signature = s.to_bytes(k, "big")
     return signature
 
 def verify(N: int, e: int, M: bytes, S: bytes) -> bool:
@@ -78,13 +77,13 @@ def verify(N: int, e: int, M: bytes, S: bytes) -> bool:
     """
     k = ceil_div(N.bit_length(), 8)
     # 1. OS2IP
-    s = bytes_to_long(S)
+    s = int.from_bytes(S, "big")
     # 2. RSAVP1
     if not 0 < s < N-1:
         return False
     m = pow(s, e, N)
     # 3. I2OSP
-    em_1 = long_to_bytes(m, k)
+    em_1 = m.to_bytes(k, "big")
     # 4. EMSA-PKCS1-v1_5 encode M
     em_2 = encode(M, k)
     return em_1 == em_2
