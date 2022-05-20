@@ -9,19 +9,20 @@ from Crypto.Util.number import ceil_div, isPrime
 from random import randint, choice
 
 # IMPORTANT: Change this to False if you want to run the client against your local implementation
-REMOTE = False
+REMOTE = True
 
-def generate_weak_group(size: int):
+def generate_weak_group(n: int):
     """ Generates a prime p with the property, that the discrete logarithm is easy to solve in the
     multiplicative group Zp*.
     """
     def get_smooth_number():
-        primes = [3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599]
+        primes = [10007,
+ 10009,  10037,  10039,  10061,  10067,  10069,  10079]
         factors = {2 :1}
         x = 2
-        while x.bit_length() < size * 8:
+        while x < n:
             p = choice(primes)
-            e = randint(1,10)
+            e = randint(1,5)
             x *= p**e
             factors[p] = factors.get(p, 0) + e
         return factors, x
@@ -175,7 +176,7 @@ class CarpetRemote():
         s = pow(req_enc, d, n)
         signature = s.to_bytes(k, "big")
         self.json_send({
-            "identity": "carpet_cloud",
+            "identity": "carpet",
             "msg": req,
             "signature": signature.hex()
         })
@@ -248,21 +249,18 @@ def attack(tn: Telnet, carpet_key: RSA.RsaKey, carpet_cloud_key: RSA.RsaKey):
     cr = CarpetRemote(tn, carpet_key, carpet_cloud_key)
 
     (n, e), priv_cfg = cr.save_config()
-    factors, n_weak = generate_weak_group(64)
+    factors, n_weak = generate_weak_group(n)
     pub_cfg = n_weak, e
     res, signature = cr.restore_config(pub_cfg, priv_cfg)
 
     s = int.from_bytes(signature, "big")
     m = int.from_bytes(encode(json.dumps(res).encode(), ceil_div(n_weak.bit_length(), 8)), "big")
     d_carpet = pohlig_hellman(m, s, n_weak-1, n_weak, factors)
-    assert(pow(m, d_carpet, n_weak) == s)
-    assert(pow(m, cr.carpet_key.d, n_weak) == s)
-    print(d_carpet == cr.carpet_key.d)
 
     cr.factory_config()
     cr.json_signed_send({"command": "backdoor"}, d_carpet, n)
 
-    print(cr.json_recv())
+    print(cr.json_recv()["signed_res"]["res"])
 
 
 if __name__ == "__main__":

@@ -3,6 +3,9 @@ from typing import Tuple, Optional
 from telnetlib import Telnet
 
 from Crypto.PublicKey.ECC import EccKey, EccPoint
+from Crypto.PublicKey import ECC
+from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
 
 from public import ECCInterface
 
@@ -29,8 +32,9 @@ class ECCImpl(ECCInterface):
         This function should implement the EC2OSP specification. Mind that we are using
         *uncompressed* points for our purposes.
         """
-
-        raise NotImplementedError
+        pc = b"\x04" # 00000100
+        q = point.size_in_bytes()
+        return pc + point.x.to_bytes(q) + point.y.to_bytes(q)
 
     @classmethod
     def derive_symmetric_keys(
@@ -62,7 +66,16 @@ class ECCImpl(ECCInterface):
         Returns:
             (bytes, bytes): respectively, the AES-GCM encryption key and the AES-GCM decryption key
         """
-        raise NotImplementedError
+        sp = privkey.d * pubkey.pointQ
+        key_enc = SHA256.new(
+            cls.ecc_point_to_bytes(sp) + 
+            cls.ecc_point_to_bytes(pubkey.pointQ) + 
+            cls.ecc_point_to_bytes(privkey.pointQ)).digest()
+        key_dec = SHA256.new(
+            cls.ecc_point_to_bytes(sp) + 
+            cls.ecc_point_to_bytes(privkey.pointQ) + 
+            cls.ecc_point_to_bytes(pubkey.pointQ)).digest()
+        return key_enc, key_dec
 
     @classmethod
     def encrypt(
@@ -84,8 +97,9 @@ class ECCImpl(ECCInterface):
             tag (bytes): the AES-GCM MAC tag
             nonce (bytes): the AES-GCM nonce
         """
-
-        raise NotImplementedError
+        aes = AES.new(key_enc, AES.MODE_GCM, nonce=nonce)
+        ciphertext, tag = aes.encrypt_and_digest(message)
+        return ciphertext, tag, aes.nonce
 
     @classmethod
     def decrypt(
@@ -104,8 +118,9 @@ class ECCImpl(ECCInterface):
         Returns:
             (bytes): the plaintext message
         """
-
-        raise NotImplementedError
+        aes = AES.new(key_dec, AES.MODE_GCM, nonce=nonce)
+        plaintext = aes.decrypt_and_verify(ciphertext, tag)
+        return plaintext
 
 
 class CarpetRemote:
@@ -114,9 +129,10 @@ class CarpetRemote:
         self.tn = tn
         self.carpet_key = carpet_key
 
-        self.key: EccKey = ...
-        self.key_enc: bytes = ...
-        self.key_dec: bytes = ...
+        self.key: EccKey = ECC.generate(curve="NIST P-256")
+        symmetric_key = ECCImpl.derive_symmetric_keys(self.key, self.carpet_key)
+        self.key_enc: bytes = symmetric_key[0]
+        self.key_dec: bytes = symmetric_key[1]
 
     def set_user_key(self):
         self.json_send(
@@ -164,13 +180,48 @@ class CarpetRemote:
         res = self.enc_json_recv()
         return res
 
+def byte_xor(a: bytes, b: bytes):
+    """ xor of two byte strings
+    """
+    return bytes([x^y for x,y in zip(a, b)])
+
 
 def interact(tn: Telnet, carpet_key):
-    """Your attack code goes here."""
+    """ This attack exploits the vulnerability, that for AES encryption, two messages with
+    the same randomness have the following property:
+        m1 xor m2 = c1 xor c2
+
+    Thus, if we manage to get a ciphertext of the flag with the same randomness as a second ciphertext,
+    of which we know the corresponding plaintext, it is easy to recover the flag.
+    """
 
     cr = CarpetRemote(tn, carpet_key)
     cr.set_user_key()
-    print(cr.get_status())
+
+    # Get encryption of flag and nonce
+    cr.enc_json_send({"command": "send_flag_to_customer_service"})
+    res = cr.enc_json_recv()["res"]
+    c1 = res["ciphertext"]
+    nonce = res["nonce"]
+
+    while True:
+        cr.enc_json_send({"command": "send_status_to_customer_service"})
+        res = cr.enc_json_recv()["res"]
+        if res["nonce"] == nonce:
+            c2 = res["ciphertext"]
+            break
+
+    c1 = bytes.fromhex(c1)
+    flag_len = len(c1)
+    c2 = bytes.fromhex(c2)[:flag_len] # we only need the first flag_len bytes of the status message
+
+    # Note: We do not know the dust level, but we don't mind as we only use the first len(c1) bytes
+    m2 = b"[Smart Carpet Dust Logging] User #1337 has sent a dust report to the customer service. Current dust level: ######kg"
+    m2 = m2[:flag_len]
+
+    m1 = byte_xor(byte_xor(c1, c2), m2)
+    print(m1.decode())
+
 
 
 if __name__ == "__main__":
