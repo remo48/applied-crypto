@@ -27,6 +27,8 @@ def get_orders(n):
 if __name__ == "__main__":
     for i in range(20):
         factors, n = generate_weak_group(carpet_test_key.n)
+        print("group generated ...")
+        print(factors)
         m = {"res": "ok"}
         m = encode(json.dumps(m).encode(), ceil_div(n.bit_length(),8))
         m = int.from_bytes(m, "big")
@@ -34,4 +36,5 @@ if __name__ == "__main__":
 
         # print(pohlig_hellman(8, 4, 11, 23, {11: 1}))
         d_rec = pohlig_hellman(m, h, n-1, n, factors)
+        print("pohlig hellman finished ...")
         assert(d_rec == carpet_test_key.d)
